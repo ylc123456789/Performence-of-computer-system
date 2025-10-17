@@ -9,12 +9,18 @@ $ns color 2 Red
 set nf [open out.nam w]
 $ns namtrace-all $nf
 
+#open the trace file 
+set tf [open out.tr w]
+$ns trace-all $tf
+
 #Define a 'finish' procedure
 proc finish {} {
-        global ns nf
+        global ns nf tf
         $ns flush-trace
         #Close the NAM trace file
         close $nf
+        #close the trace file 
+        close $tf
         #Execute NAM on the trace file
         exec nam out.nam &
         exit 0
@@ -93,3 +99,4 @@ puts "CBR interval = [$cbr set interval_]"
 
 #Run the simulation
 $ns run
+
