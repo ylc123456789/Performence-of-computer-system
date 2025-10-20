@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-analyser3.py (English-commented)
+analyser3.py (English-commented, final)
 
 Two modes:
 
@@ -12,18 +12,20 @@ Two modes:
      (renoCode.tcl, cubicCode.tcl, yeahCode.tcl, vegasCode.tcl).
    - Outputs:
        artifacts/
-         ├─ algo_summary.csv
-         ├─ algo_compare.png              (goodput & PLR)
-         ├─ fairness.png                  (Jain index)
-         └─ stability_cov.png             (CoV, lower is better)
+         ├─ algo_summary.csv               (per-algo totals: goodput/PLR/CoV/Jain)
+         ├─ flows_summary.csv              (NEW: per-flow table for Part A)
+         ├─ algo_compare.png               (goodput & PLR)
+         ├─ fairness.png                   (Jain index)
+         └─ stability_cov.png              (CoV, lower is better)
 
 2) Part B (compare two directories, e.g., DropTail vs RED)
    python3 analyser3.py --compare runs_dt runs_red [out_dir]
    - Reads four traces for each algorithm from two folders.
-   - Outputs side-by-side bar charts:
+   - Outputs:
        out_dir/
          ├─ dt_vs_red_goodput_plr.png
-         └─ dt_vs_red_fairness_stability.png
+         ├─ dt_vs_red_fairness_stability.png
+         └─ dt_vs_red_all_metrics.png      (NEW: one figure, two subplots, all four metrics)
 """
 
 import os
@@ -77,14 +79,11 @@ def run_ns_if_needed(algo: str) -> bool:
 
 def find_trace_for(algo: str):
     """Try to find a trace by wildcard; if not found, run ns, then search again."""
-    # First pass: search by glob in current directory
     for pat in TR_GLOBS.get(algo, []):
         hits = sorted(glob.glob(pat))
         if hits:
-            # Pick the most recently modified one
             hits.sort(key=lambda p: os.path.getmtime(p), reverse=True)
             return hits[0]
-    # If none found, try to run ns and search again
     if run_ns_if_needed(algo):
         for pat in TR_GLOBS.get(algo, []):
             hits = sorted(glob.glob(pat))
@@ -116,7 +115,6 @@ def parse_trace(lines):
                            flowId from the first char of the 4th token from the end (parts[-4][0])
     """
     max_t = 0.0
-    # Per-second accumulators (later converted to per-second increments)
     sec_ack_cum = defaultdict(lambda: defaultdict(int))
     sec_loss_cnt = defaultdict(lambda: defaultdict(int))
     sec_rtt_vals = defaultdict(lambda: defaultdict(list))
@@ -124,22 +122,19 @@ def parse_trace(lines):
     for parts in lines:
         if "ack_" in parts:
             t = float(parts[0]); flow = parts[1]; s = ceil(t)
-            # Store the largest cumulative ACK value seen in this second
             sec_ack_cum[flow][s] = max(sec_ack_cum[flow].get(s, 0), int(parts[-1]))
             max_t = max(max_t, t)
         elif "rtt_" in parts:
             t = float(parts[0]); flow = parts[1]; s = ceil(t)
-            # Collect all RTT samples for that second (we will average later)
             try:
                 sec_rtt_vals[flow][s].append(float(parts[-1]))
             except:
                 pass
             max_t = max(max_t, t)
         elif parts[0] == 'd':
-            # Standard ns2 drop line
             try:
                 t = float(parts[1]); s = ceil(t)
-                flow = parts[-4][0]  # flow id convention used in the provided teacher code
+                flow = parts[-4][0]
                 sec_loss_cnt[flow][s] = sec_loss_cnt[flow].get(s, 0) + 1
                 max_t = max(max_t, t)
             except:
@@ -148,7 +143,7 @@ def parse_trace(lines):
     T = int(math.ceil(max_t)) if max_t > 0 else 1
     flows = sorted(list(set(list(sec_ack_cum.keys()) + list(sec_loss_cnt.keys()))))
 
-    # Convert cumulative ACKs to per-second ACK increments
+    # Cumulative ACK -> per-second ACK increments
     ack_series = {}
     cum_ack_pkts = {}
     for f in flows:
@@ -160,7 +155,7 @@ def parse_trace(lines):
         ack_series[f] = arr
         cum_ack_pkts[f] = sum(arr)
 
-    # Per-second loss series and cumulative loss
+    # Loss per second + cumulative
     loss_series = {}
     cum_loss_pkts = {}
     for f in flows:
@@ -170,7 +165,7 @@ def parse_trace(lines):
         loss_series[f] = arr
         cum_loss_pkts[f] = sum(arr)
 
-    # Optional: average RTT per second (not used in main scoring)
+    # RTT (optional; not used in main scoring)
     rtt_series = {}
     for f in flows:
         arr = [math.nan]*(T+1)
@@ -192,29 +187,26 @@ def parse_trace(lines):
 
 def compute_metrics(parsed):
     """
-    Compute required KPIs:
+    KPIs per flow:
       - Per-second throughput (Mb/s)
       - Overall goodput (Mb/s) = total ACKed bits / duration
       - PLR (%) ≈ lost / (acked + lost)
-      - Stability (CoV) over throughput time series
-      - Fairness (Jain) using the last third of the experiment
+      - Stability (CoV) on throughput series
+      - Fairness (Jain) using the last third (computed after per-flow rates)
     """
     T = parsed["T"]; flows = parsed["flows"]
-    ack = parsed["ack_series"]; loss = parsed["loss_series"]
+    ack = parsed["ack_series"]
 
-    # Per-second throughput for each flow (Mb/s)
     thrpt = {}
     for f in flows:
         per_sec_bits = np.array(ack[f], dtype=float) * BITS_PER_PKT
         thrpt[f] = per_sec_bits / 1e6
 
-    # Overall goodput for each flow (Mb/s)
     overall = {}
     for f in flows:
         total_bits = float(parsed["cum_ack_pkts"][f]) * BITS_PER_PKT
         overall[f] = total_bits / max(1, T) / 1e6
 
-    # Packet loss rate (%) approximation
     plr = {}
     for f in flows:
         a = float(parsed["cum_ack_pkts"][f])
@@ -222,7 +214,6 @@ def compute_metrics(parsed):
         denom = a + l if (a + l) > 0 else 1.0
         plr[f] = 100.0 * l / denom
 
-    # Stability: coefficient of variation (std/mean) on throughput series
     cov = {}
     for f in flows:
         x = np.array(thrpt[f], dtype=float)
@@ -230,7 +221,6 @@ def compute_metrics(parsed):
         sd = float(np.std(x)) if x.size else 0.0
         cov[f] = (sd/mu) if mu > 1e-9 else float("inf")
 
-    # Fairness (Jain) on the last third of the time window
     s0 = int(T * (2.0/3.0))
     last_means = []
     for f in flows:
@@ -246,6 +236,27 @@ def compute_metrics(parsed):
         "thrpt_series": thrpt,
         "fairness_jain_last_third": jain,
     }
+
+# ------------- Extra export for Part A -------------
+
+def write_per_flow_csv(per_algo_parsed, per_algo_metrics, out_dir):
+    """
+    Part A requirement: per-flow total table.
+    Columns: algo, flow_id, goodput_Mbps, plr_pct, cov
+    """
+    path = os.path.join(out_dir, "flows_summary.csv")
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["algo","flow_id","goodput_Mbps","plr_pct","cov"])
+        for algo in per_algo_metrics:
+            met = per_algo_metrics[algo]
+            parsed = per_algo_parsed[algo]
+            for fid in parsed["flows"]:
+                gp  = met["overall_goodput_Mbps"][fid]
+                plr = met["plr_pct"][fid]
+                cov = met["cov"][fid]
+                w.writerow([algo, fid, f"{gp:.6f}", f"{plr:.6f}", f"{cov:.6f}"])
+    print(f"[ok] wrote {path}")
 
 # ------------- Plots and CSV -------------
 
@@ -303,7 +314,7 @@ def write_summary_csv(results, out_dir):
                     "plr_pct(avg_flows)", "stability_CoV(avg_flows)",
                     "Jain_last_third"])
         for algo in ["reno","cubic","yeah","vegas"]:
-            if algo not in results: 
+            if algo not in results:
                 continue
             met = results[algo]
             gp = sum(met["overall_goodput_Mbps"].values())
@@ -333,12 +344,15 @@ def main(out_dir="artifacts"):
 
     # Compute metrics per flavour
     results = {}
+    parsed_by_algo = {}
     for algo, trfile in algo_tr.items():
         parsed = parse_trace(split_file(trfile))
+        parsed_by_algo[algo] = parsed
         results[algo] = compute_metrics(parsed)
 
     # Export
     write_summary_csv(results, out_dir)
+    write_per_flow_csv(parsed_by_algo, results, out_dir)  # NEW: per-flow table
     plot_algo_compare(results, out_dir)
     plot_fairness(results, out_dir)
     plot_stability(results, out_dir)
@@ -418,6 +432,64 @@ def compare_two(results_A, results_B, labelA, labelB, out_dir):
     p2 = os.path.join(out_dir, "dt_vs_red_fairness_stability.png")
     fig.savefig(p2, dpi=160); plt.close(); print(f"[ok] wrote {p2}")
 
+def compare_two_single_figure(results_A, results_B, labelA, labelB, out_dir):
+    """
+    One figure with TWO subplots (as the spec asks):
+      - Left: Overall Goodput (bars) + PLR (line on secondary y-axis)
+      - Right: Jain's Fairness (bars) + Stability CoV (line on secondary y-axis)
+    """
+    algos = [a for a in ["reno","cubic","yeah","vegas"] if a in results_A and a in results_B]
+    if not algos:
+        print("[warn] nothing to compare for single figure"); return
+
+    gpA = [sum(results_A[a]["overall_goodput_Mbps"].values()) for a in algos]
+    gpB = [sum(results_B[a]["overall_goodput_Mbps"].values()) for a in algos]
+    plA = [float(sum(results_A[a]["plr_pct"].values())/len(results_A[a]["plr_pct"])) for a in algos]
+    plB = [float(sum(results_B[a]["plr_pct"].values())/len(results_B[a]["plr_pct"])) for a in algos]
+    jfA = [results_A[a]["fairness_jain_last_third"] for a in algos]
+    jfB = [results_B[a]["fairness_jain_last_third"] for a in algos]
+    cvA = [float(sum(results_A[a]["cov"].values())/len(results_A[a]["cov"])) for a in algos]
+    cvB = [float(sum(results_B[a]["cov"].values())/len(results_B[a]["cov"])) for a in algos]
+
+    x = np.arange(len(algos)); w = 0.35
+    fig, axs = plt.subplots(1,2, figsize=(12,4))
+
+    # Left subplot
+    ax1 = axs[0]
+    ax1.bar(x-w/2, gpA, width=w, label=f"{labelA} goodput")
+    ax1.bar(x+w/2, gpB, width=w, label=f"{labelB} goodput")
+    ax1.set_xticks(x); ax1.set_xticklabels(algos)
+    ax1.set_ylabel("Goodput (Mb/s)")
+    ax1.set_title("Goodput & PLR")
+    ax1b = ax1.twinx()
+    ax1b.plot(x, plA, marker='o', label=f"{labelA} PLR")
+    ax1b.plot(x, plB, marker='^', label=f"{labelB} PLR")
+    ax1b.set_ylabel("PLR (%)")
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax1b.get_legend_handles_labels()
+    ax1.legend(lines+lines2, labels+labels2, loc="upper left")
+
+    # Right subplot
+    ax2 = axs[1]
+    ax2.bar(x-w/2, jfA, width=w, label=f"{labelA} Jain")
+    ax2.bar(x+w/2, jfB, width=w, label=f"{labelB} Jain")
+    ax2.set_xticks(x); ax2.set_xticklabels(algos)
+    ax2.set_ylabel("Jain's Fairness"); ax2.set_ylim(0,1.05)
+    ax2.set_title("Fairness & Stability")
+    ax2b = ax2.twinx()
+    ax2b.plot(x, cvA, marker='o', label=f"{labelA} CoV")
+    ax2b.plot(x, cvB, marker='^', label=f"{labelB} CoV")
+    ax2b.set_ylabel("CoV (lower=better)")
+    lines, labels = ax2.get_legend_handles_labels()
+    lines2, labels2 = ax2b.get_legend_handles_labels()
+    ax2.legend(lines+lines2, labels+labels2, loc="upper left")
+
+    fig.suptitle(f"{labelA} vs {labelB}")
+    fig.tight_layout()
+    outp = os.path.join(out_dir, "dt_vs_red_all_metrics.png")
+    fig.savefig(outp, dpi=160); plt.close()
+    print(f"[ok] wrote {outp}")
+
 # ------------- Entry point -------------
 
 if __name__ == "__main__":
@@ -438,9 +510,11 @@ if __name__ == "__main__":
         A = load_results_from_dir(dt_dir)
         B = load_results_from_dir(red_dir)
         compare_two(A, B, "DropTail", "RED", out_dir)
+        compare_two_single_figure(A, B, "DropTail", "RED", out_dir)  # NEW: single figure (2 subplots)
 
     else:
         print("Usage:\n  python3 analyser3.py [artifacts_dir]\n  python3 analyser3.py --compare runs_dt runs_red [out_dir]")
+
 
 
 
