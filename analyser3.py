@@ -444,6 +444,9 @@ def compare_two(results_A, results_B, labelA, labelB, out_dir):
     fig.tight_layout()
     p2 = os.path.join(out_dir, "dt_vs_red_fairness_stability.png")
     fig.savefig(p2, dpi=160); plt.close(); print(f"[ok] wrote {p2}")
+    # Also export CSV tables for Part B textual report
+    write_compare_csv(results_A, results_B, labelA, labelB, out_dir)
+
 
 def compare_two_single_figure(results_A, results_B, labelA, labelB, out_dir):
     """
@@ -502,6 +505,142 @@ def compare_two_single_figure(results_A, results_B, labelA, labelB, out_dir):
     outp = os.path.join(out_dir, "dt_vs_red_all_metrics.png")
     fig.savefig(outp, dpi=160); plt.close()
     print(f"[ok] wrote {outp}")
+
+# ------------- Part B – CSV exporters (base comparison + sensitivity) -------------
+
+def _scheme_level_metrics(results_dict):
+    """
+    Collapse per-algo metrics to 'scheme-level' numbers used in the CSV:
+      - goodput_sum: sum of all flows' goodput over all algorithms (Mb/s)
+      - plr_avg    : average PLR across algorithms (%)
+      - jain_avg   : average Jain across algorithms (unit)
+      - cov_avg    : average CoV across algorithms (unit, lower=better)
+    """
+    algos = [a for a in ["reno","cubic","yeah","vegas"] if a in results_dict]
+    if not algos:
+        return dict(goodput_sum=float("nan"), plr_avg=float("nan"),
+                    jain_avg=float("nan"), cov_avg=float("nan"))
+    goodput_sum = sum(sum(results_dict[a]["overall_goodput_Mbps"].values()) for a in algos)
+    plr_avg     = float(np.mean([np.mean(list(results_dict[a]["plr_pct"].values())) for a in algos]))
+    jain_avg    = float(np.mean([results_dict[a]["fairness_jain_last_third"] for a in algos]))
+    cov_avg     = float(np.mean([np.mean(list(results_dict[a]["cov"].values())) for a in algos]))
+    return dict(goodput_sum=goodput_sum, plr_avg=plr_avg, jain_avg=jain_avg, cov_avg=cov_avg)
+
+
+def write_compare_csv(results_A, results_B, labelA, labelB, out_dir):
+    """
+    For base comparison: write two CSVs into out_dir:
+      1) dt_vs_red_summary.csv  (scheme-level metrics)
+      2) dt_vs_red_per_algo.csv (per-algorithm metrics)
+    'Improvement' column is defined so that POSITIVE means labelB (e.g., RED) is better:
+      - Goodput / Jain:  improvement = B - A
+      - PLR / CoV     :  improvement = A - B  (because lower is better)
+    """
+    os.makedirs(out_dir, exist_ok=True)
+
+    # ---- 1) Summary CSV (scheme-level) ----
+    A = _scheme_level_metrics(results_A)
+    B = _scheme_level_metrics(results_B)
+
+    rows = []
+    # metric, A, B, improvement (positive => B better)
+    rows.append(["Average Goodput (Mb/s)",
+                 f"{A['goodput_sum']:.6f}", f"{B['goodput_sum']:.6f}",
+                 f"{(B['goodput_sum']-A['goodput_sum']):.6f}"])
+    rows.append(["Average PLR (%)",
+                 f"{A['plr_avg']:.6f}", f"{B['plr_avg']:.6f}",
+                 f"{(A['plr_avg']-B['plr_avg']):.6f}"])
+    rows.append(["Fairness Index (Jain)",
+                 f"{A['jain_avg']:.6f}", f"{B['jain_avg']:.6f}",
+                 f"{(B['jain_avg']-A['jain_avg']):.6f}"])
+    rows.append(["Stability (CoV, lower=better)",
+                 f"{A['cov_avg']:.6f}", f"{B['cov_avg']:.6f}",
+                 f"{(A['cov_avg']-B['cov_avg']):.6f}"])
+
+    p_sum = os.path.join(out_dir, "dt_vs_red_summary.csv")
+    with open(p_sum, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Metric", labelA, labelB, "Improvement (B vs A)"])
+        w.writerows(rows)
+    print(f"[ok] wrote {p_sum}")
+
+    # ---- 2) Per-algorithm CSV ----
+    per_algo_rows = []
+    algos = [a for a in ["reno","cubic","yeah","vegas"] if a in results_A and a in results_B]
+    for a in algos:
+        # collapse per-flow inside each algo
+        gp_A = sum(results_A[a]["overall_goodput_Mbps"].values())
+        gp_B = sum(results_B[a]["overall_goodput_Mbps"].values())
+        pl_A = float(np.mean(list(results_A[a]["plr_pct"].values())))
+        pl_B = float(np.mean(list(results_B[a]["plr_pct"].values())))
+        jn_A = results_A[a]["fairness_jain_last_third"]
+        jn_B = results_B[a]["fairness_jain_last_third"]
+        cv_A = float(np.mean(list(results_A[a]["cov"].values())))
+        cv_B = float(np.mean(list(results_B[a]["cov"].values())))
+
+        per_algo_rows.append([a, "Goodput (Mb/s)", f"{gp_A:.6f}", f"{gp_B:.6f}", f"{(gp_B-gp_A):.6f}"])
+        per_algo_rows.append([a, "PLR (%)",         f"{pl_A:.6f}", f"{pl_B:.6f}", f"{(pl_A-pl_B):.6f}"])
+        per_algo_rows.append([a, "Jain",            f"{jn_A:.6f}", f"{jn_B:.6f}", f"{(jn_B-jn_A):.6f}"])
+        per_algo_rows.append([a, "CoV",             f"{cv_A:.6f}", f"{cv_B:.6f}", f"{(cv_A-cv_B):.6f}"])
+
+    p_algo = os.path.join(out_dir, "dt_vs_red_per_algo.csv")
+    with open(p_algo, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Algorithm", "Metric", labelA, labelB, "Improvement (B vs A)"])
+        w.writerows(per_algo_rows)
+    print(f"[ok] wrote {p_algo}")
+
+
+def write_sensitivity_table(dt_500, red_500, dt_2g, red_2g, out_dir):
+    """
+    For sensitivity subsection: write 'sensitivity_table.csv' with 4 metrics × 2 bandwidths × 2 schemes.
+    Columns: Metric, DT@500Mb, RED@500Mb, DT@2Gb, RED@2Gb,
+             Flip? (for that metric, whether ranking RED vs DT flips from 500Mb to 2Gb).
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    A500 = _scheme_level_metrics(dt_500)
+    B500 = _scheme_level_metrics(red_500)
+    A2G  = _scheme_level_metrics(dt_2g)
+    B2G  = _scheme_level_metrics(red_2g)
+
+    def flip(higher_is_better, vA_500, vB_500, vA_2g, vB_2g):
+        if higher_is_better:
+            sign_500 = np.sign(vB_500 - vA_500)
+            sign_2g  = np.sign(vB_2g  - vA_2g)
+        else:
+            # lower is better -> invert sign comparison
+            sign_500 = np.sign(vA_500 - vB_500)
+            sign_2g  = np.sign(vA_2g  - vB_2g)
+        return "Yes" if (sign_500 * sign_2g) < 0 else "No"
+
+    rows = []
+    rows.append(["Average Goodput (Mb/s)",
+                 f"{A500['goodput_sum']:.6f}", f"{B500['goodput_sum']:.6f}",
+                 f"{A2G['goodput_sum']:.6f}",  f"{B2G['goodput_sum']:.6f}",
+                 flip(True, A500['goodput_sum'], B500['goodput_sum'], A2G['goodput_sum'], B2G['goodput_sum'])])
+
+    rows.append(["Average PLR (%)",
+                 f"{A500['plr_avg']:.6f}", f"{B500['plr_avg']:.6f}",
+                 f"{A2G['plr_avg']:.6f}",  f"{B2G['plr_avg']:.6f}",
+                 flip(False, A500['plr_avg'], B500['plr_avg'], A2G['plr_avg'], B2G['plr_avg'])])
+
+    rows.append(["Fairness Index (Jain)",
+                 f"{A500['jain_avg']:.6f}", f"{B500['jain_avg']:.6f}",
+                 f"{A2G['jain_avg']:.6f}",  f"{B2G['jain_avg']:.6f}",
+                 flip(True, A500['jain_avg'], B500['jain_avg'], A2G['jain_avg'], B2G['jain_avg'])])
+
+    rows.append(["Stability (CoV, lower=better)",
+                 f"{A500['cov_avg']:.6f}", f"{B500['cov_avg']:.6f}",
+                 f"{A2G['cov_avg']:.6f}",  f"{B2G['cov_avg']:.6f}",
+                 flip(False, A500['cov_avg'], B500['cov_avg'], A2G['cov_avg'], B2G['cov_avg'])])
+
+    p = os.path.join(out_dir, "sensitivity_table.csv")
+    with open(p, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["Metric", "DT@500Mb", "RED@500Mb", "DT@2Gb", "RED@2Gb", "Flip? (RED vs DT)"])
+        w.writerows(rows)
+    print(f"[ok] wrote {p}")
+
 
 # ------------- Part B – Sensitivity (500Mb vs 2Gb) -------------
 
@@ -651,6 +790,9 @@ def run_sensitivity(dt_500_dir, red_500_dir, dt_2g_dir, red_2g_dir, out_dir):
     red_2g = load_results_from_dir(red_2g_dir)
     sensitivity_overlay_figure(dt_500, red_500, dt_2g, red_2g, out_dir)
     write_sensitivity_summary(dt_500, red_500, dt_2g, red_2g, out_dir)
+    # And export a single wide CSV covering both bandwidths + flip flags
+    write_sensitivity_table(dt_500, red_500, dt_2g, red_2g, out_dir)
+
 
 # ------------- Entry point -------------
 
