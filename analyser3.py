@@ -273,52 +273,41 @@ def write_per_flow_csv(per_algo_parsed, per_algo_metrics, out_dir):
 
 # ------------- Plots and CSV -------------
 def write_dt_red_csv(dt_metrics, red_metrics, out_dir):
-    """Save DropTail vs RED comparison data to CSV"""
+    """
+    Save DropTail vs RED comparison data to CSV, preserving individual algorithm data.
+    Stores metrics for each TCP flavor (reno, cubic, yeah, vegas) without cross-algorithm averaging.
+    """
     os.makedirs(out_dir, exist_ok=True)
-    csv_path = os.path.join(out_dir, "dt_vs_red_summary.csv")
+    csv_path = os.path.join(out_dir, "dt_vs_red_per_algo.csv")
     
     with open(csv_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["metric", "drop_tail", "red"])
+        # Header: algorithm name, metric type, DropTail value, RED value
+        writer.writerow(["algo", "metric", "drop_tail", "red"])
         
-        # 1. 总吞吐量：所有算法的吞吐量之和
-        dt_total_goodput = sum(sum(algo_metrics["overall_goodput_Mbps"].values()) for algo_metrics in dt_metrics.values())
-        red_total_goodput = sum(sum(algo_metrics["overall_goodput_Mbps"].values()) for algo_metrics in red_metrics.values())
-        writer.writerow(["total_goodput_Mbps", f"{dt_total_goodput:.6f}", f"{red_total_goodput:.6f}"])
-        
-        # 2. 平均丢包率：所有算法的PLR平均值
-        dt_plr_list = []
-        for algo_metrics in dt_metrics.values():
-            dt_plr_list.extend(algo_metrics["plr_pct"].values())
-        dt_avg_plr = sum(dt_plr_list) / len(dt_plr_list) if dt_plr_list else 0.0
-        
-        red_plr_list = []
-        for algo_metrics in red_metrics.values():
-            red_plr_list.extend(algo_metrics["plr_pct"].values())
-        red_avg_plr = sum(red_plr_list) / len(red_plr_list) if red_plr_list else 0.0
-        writer.writerow(["avg_plr_pct", f"{dt_avg_plr:.6f}", f"{red_avg_plr:.6f}"])
-        
-        # 3. Jain公平性指数：所有算法的Jain平均值
-        dt_jain_list = [algo_metrics["fairness_jain_last_third"] for algo_metrics in dt_metrics.values()]
-        dt_avg_jain = sum(dt_jain_list) / len(dt_jain_list) if dt_jain_list else 0.0
-        
-        red_jain_list = [algo_metrics["fairness_jain_last_third"] for algo_metrics in red_metrics.values()]
-        red_avg_jain = sum(red_jain_list) / len(red_jain_list) if red_jain_list else 0.0
-        writer.writerow(["jain_fairness_last_third", f"{dt_avg_jain:.6f}", f"{red_avg_jain:.6f}"])
-        
-        # 4. 平均稳定性（CoV平均值）
-        dt_cov_list = []
-        for algo_metrics in dt_metrics.values():
-            dt_cov_list.extend(algo_metrics["cov"].values())
-        dt_avg_cov = sum(dt_cov_list) / len(dt_cov_list) if dt_cov_list else 0.0
-        
-        red_cov_list = []
-        for algo_metrics in red_metrics.values():
-            red_cov_list.extend(algo_metrics["cov"].values())
-        red_avg_cov = sum(red_cov_list) / len(red_cov_list) if red_cov_list else 0.0
-        writer.writerow(["avg_stability_cov", f"{dt_avg_cov:.6f}", f"{red_avg_cov:.6f}"])
+        # Process each TCP flavor individually
+        for algo in ["reno", "cubic", "yeah", "vegas"]:
+            # 1. Total goodput (sum of all flows for this algorithm)
+            dt_gp = sum(dt_metrics[algo]["overall_goodput_Mbps"].values()) if algo in dt_metrics else 0.0
+            red_gp = sum(red_metrics[algo]["overall_goodput_Mbps"].values()) if algo in red_metrics else 0.0
+            writer.writerow([algo, "total_goodput_Mbps", f"{dt_gp:.6f}", f"{red_gp:.6f}"])
+            
+            # 2. Average packet loss rate (average across flows for this algorithm)
+            dt_plr = np.mean(list(dt_metrics[algo]["plr_pct"].values())) if algo in dt_metrics else 0.0
+            red_plr = np.mean(list(red_metrics[algo]["plr_pct"].values())) if algo in red_metrics else 0.0
+            writer.writerow([algo, "avg_plr_pct", f"{dt_plr:.6f}", f"{red_plr:.6f}"])
+            
+            # 3. Jain's fairness index (specific to this algorithm)
+            dt_jain = dt_metrics[algo]["fairness_jain_last_third"] if algo in dt_metrics else 0.0
+            red_jain = red_metrics[algo]["fairness_jain_last_third"] if algo in red_metrics else 0.0
+            writer.writerow([algo, "jain_fairness_last_third", f"{dt_jain:.6f}", f"{red_jain:.6f}"])
+            
+            # 4. Average stability (Coefficient of Variation, average across flows)
+            dt_cov = np.mean(list(dt_metrics[algo]["cov"].values())) if algo in dt_metrics else 0.0
+            red_cov = np.mean(list(red_metrics[algo]["cov"].values())) if algo in red_metrics else 0.0
+            writer.writerow([algo, "avg_stability_cov", f"{dt_cov:.6f}", f"{red_cov:.6f}"])
     
-    print(f"CSV data generated: {csv_path}")
+    print(f"Per-algorithm comparison CSV generated: {csv_path}")
  
 
 def plot_algo_compare(results, out_dir):
