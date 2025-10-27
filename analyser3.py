@@ -339,6 +339,43 @@ def write_summary_csv(results, out_dir):
             w.writerow([algo, f"{gp:.3f}", f"{plr_avg:.3f}", f"{cov_avg:.3f}", f"{jain:.4f}"])
     print(f"[ok] wrote {path}")
 
+# New: CSV generation function (for Part B only)
+def write_dt_red_csv_csv(dt_metrics, red_metrics, out_dir):
+    """Save DropTail vs RED comparison data to CSV"""
+    # Ensure output directory exists
+    os.makedirs(out_dir, exist_ok=True)
+    csv_path = os.path.join(out_dir, "dt_vs_red_summary.csv")
+    
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        # Write header
+        writer.writerow(["metric", "drop_tail", "red"])
+        
+        # 1. Total goodput (sum of goodput across all TCP algorithms)
+        dt_total_goodput = sum(dt_metrics["overall_goodput_Mbps"].values())
+        red_total_goodput = sum(red_metrics["overall_goodput_Mbps"].values())
+        writer.writerow(["total_goodput_Mbps", f"{dt_total_goodput:.6f}", f"{red_total_goodput:.6f}"])
+        
+        # 2. Average packet loss rate (average PLR across all TCP algorithms)
+        dt_avg_plr = sum(dt_metrics["plr_pct"].values()) / len(dt_metrics["plr_pct"])
+        red_avg_plr = sum(red_metrics["plr_pct"].values()) / len(red_metrics["plr_pct"])
+        writer.writerow(["avg_plr_pct", f"{dt_avg_plr:.6f}", f"{red_avg_plr:.6f}"])
+        
+        # 3. Jain's fairness index (from the last 1/3 of the time window)
+        writer.writerow([
+            "jain_fairness_last_third",
+            f"{dt_metrics['fairness_jain_last_third']:.6f}",
+            f"{red_metrics['fairness_jain_last_third']:.6f}"
+        ])
+        
+        # 4. Average throughput stability (mean of Coefficient of Variation)
+        dt_avg_cov = sum(dt_metrics["cov"].values()) / len(dt_metrics["cov"])
+        red_avg_cov = sum(red_metrics["cov"].values()) / len(red_metrics["cov"])
+        writer.writerow(["avg_stability_cov", f"{dt_avg_cov:.6f}", f"{red_avg_cov:.6f}"])
+    
+    print(f"CSV data generated: {csv_path}")
+
+
 # ------------- Part A driver -------------
 
 def main(out_dir="artifacts"):
@@ -672,8 +709,10 @@ if __name__ == "__main__":
         A = load_results_from_dir(dt_dir)
         B = load_results_from_dir(red_dir)
         compare_two(A, B, "DropTail", "RED", out_dir)
-        compare_two_single_figure(A, B, "DropTail", "RED", out_dir)  # ONE figure with TWO subplots
-
+        compare_two_single_figure(A, B, "DropTail", "RED", out_dir)  # ONE figure with TWO subplot
+        # New: Call CSV generation function
+        write_dt_red_csv(dt_metrics, red_metrics, out_dir)  # Core new line
+ 
     # Part B (sensitivity): python3 analyser3.py --sensitivity runs_dt_500M runs_red_500M runs_dt_2G runs_red_2G [out_dir]
     elif len(args) >= 1 and args[0] == "--sensitivity":
         dt500 = args[1]; red500 = args[2]; dt2g = args[3]; red2g = args[4]
