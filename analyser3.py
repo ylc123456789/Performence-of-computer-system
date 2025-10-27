@@ -272,6 +272,54 @@ def write_per_flow_csv(per_algo_parsed, per_algo_metrics, out_dir):
     print(f"[ok] wrote {path}")
 
 # ------------- Plots and CSV -------------
+def write_dt_red_csv(dt_metrics, red_metrics, out_dir):
+    """Save DropTail vs RED comparison data to CSV"""
+    os.makedirs(out_dir, exist_ok=True)
+    csv_path = os.path.join(out_dir, "dt_vs_red_summary.csv")
+    
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["metric", "drop_tail", "red"])
+        
+        # 1. 总吞吐量：所有算法的吞吐量之和
+        dt_total_goodput = sum(sum(algo_metrics["overall_goodput_Mbps"].values()) for algo_metrics in dt_metrics.values())
+        red_total_goodput = sum(sum(algo_metrics["overall_goodput_Mbps"].values()) for algo_metrics in red_metrics.values())
+        writer.writerow(["total_goodput_Mbps", f"{dt_total_goodput:.6f}", f"{red_total_goodput:.6f}"])
+        
+        # 2. 平均丢包率：所有算法的PLR平均值
+        dt_plr_list = []
+        for algo_metrics in dt_metrics.values():
+            dt_plr_list.extend(algo_metrics["plr_pct"].values())
+        dt_avg_plr = sum(dt_plr_list) / len(dt_plr_list) if dt_plr_list else 0.0
+        
+        red_plr_list = []
+        for algo_metrics in red_metrics.values():
+            red_plr_list.extend(algo_metrics["plr_pct"].values())
+        red_avg_plr = sum(red_plr_list) / len(red_plr_list) if red_plr_list else 0.0
+        writer.writerow(["avg_plr_pct", f"{dt_avg_plr:.6f}", f"{red_avg_plr:.6f}"])
+        
+        # 3. Jain公平性指数：所有算法的Jain平均值
+        dt_jain_list = [algo_metrics["fairness_jain_last_third"] for algo_metrics in dt_metrics.values()]
+        dt_avg_jain = sum(dt_jain_list) / len(dt_jain_list) if dt_jain_list else 0.0
+        
+        red_jain_list = [algo_metrics["fairness_jain_last_third"] for algo_metrics in red_metrics.values()]
+        red_avg_jain = sum(red_jain_list) / len(red_jain_list) if red_jain_list else 0.0
+        writer.writerow(["jain_fairness_last_third", f"{dt_avg_jain:.6f}", f"{red_avg_jain:.6f}"])
+        
+        # 4. 平均稳定性（CoV平均值）
+        dt_cov_list = []
+        for algo_metrics in dt_metrics.values():
+            dt_cov_list.extend(algo_metrics["cov"].values())
+        dt_avg_cov = sum(dt_cov_list) / len(dt_cov_list) if dt_cov_list else 0.0
+        
+        red_cov_list = []
+        for algo_metrics in red_metrics.values():
+            red_cov_list.extend(algo_metrics["cov"].values())
+        red_avg_cov = sum(red_cov_list) / len(red_cov_list) if red_cov_list else 0.0
+        writer.writerow(["avg_stability_cov", f"{dt_avg_cov:.6f}", f"{red_avg_cov:.6f}"])
+    
+    print(f"CSV data generated: {csv_path}")
+ 
 
 def plot_algo_compare(results, out_dir):
     """Part A: bar charts for total goodput and average PLR across flavours."""
@@ -673,7 +721,9 @@ if __name__ == "__main__":
         B = load_results_from_dir(red_dir)
         compare_two(A, B, "DropTail", "RED", out_dir)
         compare_two_single_figure(A, B, "DropTail", "RED", out_dir)  # ONE figure with TWO subplots
+        write_dt_red_csv(A, B, out_dir)  # save data as csv
 
+ 
     # Part B (sensitivity): python3 analyser3.py --sensitivity runs_dt_500M runs_red_500M runs_dt_2G runs_red_2G [out_dir]
     elif len(args) >= 1 and args[0] == "--sensitivity":
         dt500 = args[1]; red500 = args[2]; dt2g = args[3]; red2g = args[4]
