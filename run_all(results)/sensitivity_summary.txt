@@ -1,0 +1,1 @@
+Sensitivity conclusion: Under 500 Mb, the overall better performer is RED; under 2 Gb, it is RED. Flip detected: No. The judgement is based on a majority vote over four metrics: total goodput (higher-is-better), average packet loss rate (lower-is-better), Jain
