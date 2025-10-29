@@ -106,10 +106,12 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     
     SUMMARY_CSV="${ANALYSIS_DIR}/algo_summary.csv"
     if [ -f "${SUMMARY_CSV}" ]; then
-        THROUGHPUT=$(grep "${ALGO}" "${SUMMARY_CSV}" | cut -d',' -f2)
-        PLR=$(grep "${ALGO}" "${SUMMARY_CSV}" | cut -d',' -f3)
-        JAIN=$(grep "${ALGO}" "${SUMMARY_CSV}" | cut -d',' -f5)
-        COV=$(grep "${ALGO}" "${SUMMARY_CSV}" | cut -d',' -f4)
+        # 直接读取CSV第二行的列（假设cubic在第二行）
+        read -r line < <(tail -n +2 "${SUMMARY_CSV}")
+        THROUGHPUT=$(echo "$line" | cut -d',' -f2)
+        PLR=$(echo "$line" | cut -d',' -f3)
+        JAIN=$(echo "$line" | cut -d',' -f5)
+        COV=$(echo "$line" | cut -d',' -f4)
         echo "${run},${THROUGHPUT},${PLR},${JAIN},${COV}" >> "${RESULTS_CSV}"
         echo "第 ${run} 次指标：吞吐量=${THROUGHPUT} Mb/s，PLR=${PLR}%，Jain=${JAIN}，CoV=${COV}"
     else
