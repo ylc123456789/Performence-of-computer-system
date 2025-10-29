@@ -50,11 +50,13 @@ SCENARIO="${ALGO}_${QUEUE}"
 BANDWIDTH="1000Mb"
 OUT_DIR="repeat_runs_${SCENARIO}_${NUM_RUNS}times"
 RUN_LOG="${OUT_DIR}/run_logs"
+# 调整CSV列顺序为 run_id,throughput_Mbps,plr_pct,cov_stability,jain_fairness
 RESULTS_CSV="${OUT_DIR}/${SCENARIO}_runs_summary.csv"
 
 mkdir -p "${OUT_DIR}" "${RUN_LOG}"
 
-echo "run_id,throughput_Mbps,plr_pct,jain_fairness,cov_stability" > "${RESULTS_CSV}"
+# 调整列头顺序
+echo "run_id,throughput_Mbps,plr_pct,cov_stability,jain_fairness" > "${RESULTS_CSV}"
 
 echo "=== 开始 ${NUM_RUNS} 次重复实验（场景：${ALGO}+${QUEUE}） ==="
 for ((run=1; run<=NUM_RUNS; run++)); do
@@ -111,10 +113,11 @@ for ((run=1; run<=NUM_RUNS; run++)); do
         if [ -n "$line" ]; then
             THROUGHPUT=$(echo "$line" | cut -d',' -f2)
             PLR=$(echo "$line" | cut -d',' -f3)
-            COV=$(echo "$line" | cut -d',' -f4)
-            JAIN=$(echo "$line" | cut -d',' -f5)
-            echo "${run},${THROUGHPUT},${PLR},${JAIN},${COV}" >> "${RESULTS_CSV}"
-            echo "第 ${run} 次指标：吞吐量=${THROUGHPUT} Mb/s，PLR=${PLR}%，Jain=${JAIN}，CoV=${COV}"
+            COV=$(echo "$line" | cut -d',' -f4)  # cov_stability对应第4列
+            JAIN=$(echo "$line" | cut -d',' -f5) # jain_fairness对应第5列
+            # 按照新列序写入：run_id,throughput_Mbps,plr_pct,cov_stability,jain_fairness
+            echo "${run},${THROUGHPUT},${PLR},${COV},${JAIN}" >> "${RESULTS_CSV}"
+            echo "第 ${run} 次指标：吞吐量=${THROUGHPUT} Mb/s，PLR=${PLR}%，CoV=${COV}，Jain=${JAIN}"
         else
             echo "警告：未找到${ALGO}对应的指标行"
         fi
@@ -148,8 +151,8 @@ else:
     metrics = {
         "throughput_Mbps": "吞吐量 (Mb/s)",
         "plr_pct": "丢包率 (%)",
-        "jain_fairness": "Jain公平性",
-        "cov_stability": "稳定性CoV (越低越好)"
+        "cov_stability": "稳定性CoV (越低越好)",
+        "jain_fairness": "Jain公平性"
     }
     with open(f"{OUT_DIR}/summary_stats.csv", "w") as f:
         f.write("metric,mean,ci_lower,ci_upper\n")
