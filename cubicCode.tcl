@@ -8,9 +8,9 @@
 #             n2                   n6 
 
 set ns [new Simulator]
-# --- 新增：定义并读取随机种子（从环境变量或默认值获取） ---
+# --- Add: Define and read random seed (from environment variable or default) ---
 set seed [expr {[info exists ::env(SEED)] ? $::env(SEED) : [clock seconds]}]
-puts "当前随机种子: $seed"
+puts "Current random seed: $seed"
 
 # --- Read bottleneck bandwidth from environment variable (default 500Mb) ---
 # Use values like 500Mb or 2Gb when running:  BW=2Gb ns ./cubicCode.tcl
@@ -27,10 +27,8 @@ $ns trace-all $tracefile1
 proc finish {} {
     global ns namfile
     $ns flush-trace
-    #Close the NAM trace file
+    # Close the NAM trace file
     close $namfile
-    #Execute NAM on the trace file
-    # exec nam reno.nam &
     exit 0
 }
 
@@ -60,10 +58,10 @@ set source1 [new Agent/TCP/Linux]
 $ns at 0 "$source1 select_ca cubic"
 $source1 set class_ 2
 $source1 set ttl_ 64
-# --- 新增：TCP参数随机化（基于seed） ---
-$source1 set window_ [expr {$seed % 500 + 500}]  ;# 窗口大小随机为500~999
+# --- Add: Randomize TCP parameters (based on seed) ---
+$source1 set window_ [expr {$seed % 500 + 500}]  ;# Random window size: 500~999
 $source1 set packet_size_ 1000
-$source1 set seed_ $seed  ;# 将种子传递给TCP Agent，触发内部随机逻辑
+$source1 set seed_ $seed  ;# Pass seed to TCP Agent for internal random logic
 
 $ns attach-agent $n1 $source1
 set sink1 [new Agent/TCPSink/Sack1]
@@ -75,10 +73,10 @@ set source2 [new Agent/TCP/Linux]
 $ns at 0.0 "$source2 select_ca cubic"
 $source2 set class_ 1
 $source2 set ttl_ 64
-# --- 新增：TCP参数随机化（基于seed） ---
-$source2 set window_ [expr {$seed % 500 + 500}]  ;# 窗口大小随机为500~999
+# --- Add: Randomize TCP parameters (based on seed) ---
+$source2 set window_ [expr {$seed % 500 + 500}]  ;# Random window size: 500~999
 $source2 set packet_size_ 1000
-$source2 set seed_ $seed  ;# 将种子传递给TCP Agent，触发内部随机逻辑
+$source2 set seed_ $seed  ;# Pass seed to TCP Agent for internal random logic
 
 $ns attach-agent $n2 $source2
 set sink2 [new Agent/TCPSink/Sack1]
