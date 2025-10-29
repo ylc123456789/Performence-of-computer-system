@@ -111,8 +111,8 @@ for ((run=1; run<=NUM_RUNS; run++)); do
         if [ -n "$line" ]; then
             THROUGHPUT=$(echo "$line" | cut -d',' -f2)
             PLR=$(echo "$line" | cut -d',' -f3)
-            JAIN=$(echo "$line" | cut -d',' -f5)
             COV=$(echo "$line" | cut -d',' -f4)
+            JAIN=$(echo "$line" | cut -d',' -f5)
             echo "${run},${THROUGHPUT},${PLR},${JAIN},${COV}" >> "${RESULTS_CSV}"
             echo "第 ${run} 次指标：吞吐量=${THROUGHPUT} Mb/s，PLR=${PLR}%，Jain=${JAIN}，CoV=${COV}"
         else
