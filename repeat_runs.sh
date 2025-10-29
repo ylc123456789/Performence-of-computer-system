@@ -66,7 +66,7 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     JITTER=$(echo "scale=4; $RANDOM / 65535 * 1.0" | bc)  # 扩大抖动范围
     echo "启动时间抖动: ${JITTER}秒"
     
-    TCL_SCRIPT="${ALGO}Code.tcl"
+    TCL_SCRIPT="${ALGO}Code_${QUEUE}.tcl"
     if [ ! -f "${TCL_SCRIPT}" ]; then
         echo "错误：未找到脚本 ${TCL_SCRIPT}，终止实验"
         exit 1
