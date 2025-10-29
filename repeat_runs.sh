@@ -146,8 +146,13 @@ import pandas as pd
 import scipy.stats as stats
 import numpy as np
 
+# 读取Shell传递的参数
+NUM_RUNS = int('${NUM_RUNS}')
+RESULTS_CSV = '${RESULTS_CSV}'
+OUT_DIR = '${OUT_DIR}'
+
 # 读取结果CSV
-df = pd.read_csv("${RESULTS_CSV}")
+df = pd.read_csv(RESULTS_CSV)
 valid_runs = len(df.dropna())
 print(f"有效运行次数：{valid_runs}/{NUM_RUNS}")
 
@@ -162,7 +167,7 @@ else:
         "cov_stability": "稳定性CoV (越低越好)"
     }
     # 保存统计结果到CSV
-    with open("${OUT_DIR}/summary_stats.csv", "w") as f:
+    with open(f"{OUT_DIR}/summary_stats.csv", "w") as f:
         f.write("metric,mean,ci_lower,ci_upper\n")
         print("\n===== 均值与95%置信区间 =====")
         for col, name in metrics.items():
@@ -176,7 +181,7 @@ else:
             print(f"{name}:")
             print(f"  均值: {mean}")
             print(f"  95%置信区间: [{ci_lower}, {ci_upper}]")
-    print("\n统计结果已保存至：${OUT_DIR}/summary_stats.csv")
+    print(f"\n统计结果已保存至：{OUT_DIR}/summary_stats.csv")
 
 END
 
