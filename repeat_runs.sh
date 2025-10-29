@@ -85,7 +85,7 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     
     # 运行仿真
     echo "运行仿真：ns ${TCL_SCRIPT}"
-    ns "${TCL_SCRIPT}" > "${RUN_LOG}/run_${run}_sim.log" 2>&1
+    SEED=${SEED} ns "${TCL_SCRIPT}" > "${RUN_LOG}/run_${run}_sim.log" 2>&1
     if [ $? -ne 0 ]; then
         echo "警告：第 ${run} 次仿真失败，日志：${RUN_LOG}/run_${run}_sim.log"
         continue
