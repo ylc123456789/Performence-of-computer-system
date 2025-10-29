@@ -1,5 +1,29 @@
 #!/bin/bash
 
+# 检查并安装必要的Python库
+check_and_install_python_libs() {
+    echo "=== 检查Python依赖库 ==="
+    # 检查pip是否可用
+    if ! command -v pip3 &> /dev/null; then
+        echo "未找到pip3，尝试安装python3-pip..."
+        sudo apt-get update && sudo apt-get install -y python3-pip
+    fi
+
+    # 检查并安装scipy、pandas、numpy
+    required_libs=("scipy" "pandas" "numpy")
+    for lib in "${required_libs[@]}"; do
+        if ! python3 -c "import $lib" &> /dev/null; then
+            echo "未找到$lib，正在安装..."
+            pip3 install $lib --quiet
+        else
+            echo "$lib已安装"
+        fi
+    done
+}
+
+# 先执行依赖检查和安装
+check_and_install_python_libs
+
 # 检查输入参数
 if [ $# -ne 3 ]; then
     echo "使用方式: $0 <算法名称> <队列策略> <运行次数>"
