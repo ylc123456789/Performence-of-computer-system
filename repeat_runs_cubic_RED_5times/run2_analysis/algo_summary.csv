@@ -1,0 +1,2 @@
+algo,overall_goodput_Mbps(sum_flows),plr_pct(avg_flows),stability_CoV(avg_flows),Jain_last_third
+cubic,0.229,3.061,1.604,0.5824

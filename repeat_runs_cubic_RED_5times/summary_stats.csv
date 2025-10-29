@@ -1,0 +1,5 @@
+metric,mean,ci_lower,ci_upper
+throughput_Mbps,0.1556,0.0666,0.2446
+plr_pct,3.0458,2.3042,3.7874
+cov_stability,1.5684,1.5369,1.5999
+jain_fairness,0.6583,0.5725,0.7441
