@@ -11,7 +11,7 @@ set ns [new Simulator]
 
 # --- 1. reveive random seed ---
 set seed [expr {[info exists ::env(SEED)] ? $::env(SEED) : [clock seconds]}]
-puts "current random seed: $seed"  # print seed see if works
+puts "Current random seed: $seed"  ;# Print seed to verify effectiveness
 
 # --- 2. read bottleneck bandwidth ---
 set bw [expr {[info exists ::env(BW)] ? $::env(BW) : "500Mb"}]
