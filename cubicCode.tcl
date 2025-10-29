@@ -1,4 +1,3 @@
-
 # Simulation Topology
 #              n1                  n5
 #               \                  /
@@ -9,6 +8,10 @@
 #             n2                   n6 
 
 set ns [new Simulator]
+# --- Add: Define and read random seed (from environment variable or default) ---
+set seed [expr {[info exists ::env(SEED)] ? $::env(SEED) : [clock seconds]}]
+puts "Current random seed: $seed"
+
 # --- Read bottleneck bandwidth from environment variable (default 500Mb) ---
 # Use values like 500Mb or 2Gb when running:  BW=2Gb ns ./cubicCode.tcl
 set bw [expr {[info exists ::env(BW)] ? $::env(BW) : "500Mb"}]
@@ -24,10 +27,8 @@ $ns trace-all $tracefile1
 proc finish {} {
     global ns namfile
     $ns flush-trace
-    #Close the NAM trace file
+    # Close the NAM trace file
     close $namfile
-    #Execute NAM on the trace file
-    # exec nam reno.nam &
     exit 0
 }
 
@@ -57,8 +58,10 @@ set source1 [new Agent/TCP/Linux]
 $ns at 0 "$source1 select_ca cubic"
 $source1 set class_ 2
 $source1 set ttl_ 64
-$source1 set window_ 1000
+# --- Add: Randomize TCP parameters (based on seed) ---
+$source1 set window_ [expr {$seed % 500 + 500}]  ;# Random window size: 500~999
 $source1 set packet_size_ 1000
+$source1 set seed_ $seed  ;# Pass seed to TCP Agent for internal random logic
 
 $ns attach-agent $n1 $source1
 set sink1 [new Agent/TCPSink/Sack1]
@@ -70,8 +73,10 @@ set source2 [new Agent/TCP/Linux]
 $ns at 0.0 "$source2 select_ca cubic"
 $source2 set class_ 1
 $source2 set ttl_ 64
-$source2 set window_ 1000
+# --- Add: Randomize TCP parameters (based on seed) ---
+$source2 set window_ [expr {$seed % 500 + 500}]  ;# Random window size: 500~999
 $source2 set packet_size_ 1000
+$source2 set seed_ $seed  ;# Pass seed to TCP Agent for internal random logic
 
 $ns attach-agent $n2 $source2
 set sink2 [new Agent/TCPSink/Sack1]

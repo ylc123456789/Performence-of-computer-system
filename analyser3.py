@@ -821,6 +821,34 @@ if __name__ == "__main__":
         dt500 = args[1]; red500 = args[2]; dt2g = args[3]; red2g = args[4]
         out_dir = args[5] if len(args) > 5 else "artifacts_sensitivity"
         run_sensitivity(dt500, red500, dt2g, red2g, out_dir)
+    
+    # Part C analyse 5 times repeated run
+    elif len(args) == 2 and os.path.isfile(args[0]):
+        trace_file = args[0]
+        out_dir = args[1]
+        os.makedirs(out_dir, exist_ok=True)
+        
+        # analyse single .tr
+        parsed = parse_trace(split_file(trace_file))
+        metrics = compute_metrics(parsed)
+        
+        # export algo_summary.csv(only include .tr index)
+        with open(os.path.join(out_dir, "algo_summary.csv"), "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["algo", "overall_goodput_Mbps(sum_flows)",
+                        "plr_pct(avg_flows)", "stability_CoV(avg_flows)",
+                        "Jain_last_third"])
+            # assumed extract algo name like: cubic_RED_run1.tr -> cubic
+            algo = os.path.basename(trace_file).split('_')[0].lower()
+            gp = sum(metrics["overall_goodput_Mbps"].values())
+            cov_vals = list(metrics["cov"].values())
+            cov_avg = float(sum(cov_vals)/len(cov_vals)) if cov_vals else float("nan")
+            plr_vals = list(metrics["plr_pct"].values())
+            plr_avg = float(sum(plr_vals)/len(plr_vals)) if plr_vals else float("nan")
+            jain = metrics["fairness_jain_last_third"]
+            w.writerow([algo, f"{gp:.3f}", f"{plr_avg:.3f}", f"{cov_avg:.3f}", f"{jain:.4f}"])
+        print(f"[ok] finish analysing {trace_file}，save result to {out_dir}")
+        sys.exit(0)
 
     else:
         print(
