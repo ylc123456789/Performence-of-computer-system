@@ -98,9 +98,11 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     mv "${TRACE_FILE}" "${TRACE_DEST}"
     echo "trace文件已保存至：${TRACE_DEST}"
     
+    # 调整analyser3.py调用：明确指定trace文件路径
     echo "分析第 ${run} 次结果..."
     ANALYSIS_DIR="${OUT_DIR}/run${run}_analysis"
-    python3 analyser3.py "${ANALYSIS_DIR}" > "${RUN_LOG}/run_${run}_analysis.log" 2>&1
+    mkdir -p "${ANALYSIS_DIR}"
+    python3 analyser3.py "${TRACE_DEST}" "${ANALYSIS_DIR}" > "${RUN_LOG}/run_${run}_analysis.log" 2>&1
     
     SUMMARY_CSV="${ANALYSIS_DIR}/algo_summary.csv"
     if [ -f "${SUMMARY_CSV}" ]; then
