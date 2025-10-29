@@ -3,13 +3,11 @@
 # 检查并安装必要的Python库
 check_and_install_python_libs() {
     echo "=== 检查Python依赖库 ==="
-    # 检查pip是否可用
     if ! command -v pip3 &> /dev/null; then
         echo "未找到pip3，尝试安装python3-pip..."
         sudo apt-get update && sudo apt-get install -y python3-pip
     fi
 
-    # 检查并安装scipy、pandas、numpy
     required_libs=("scipy" "pandas" "numpy")
     for lib in "${required_libs[@]}"; do
         if ! python3 -c "import $lib" &> /dev/null; then
@@ -21,22 +19,18 @@ check_and_install_python_libs() {
     done
 }
 
-# 先执行依赖检查和安装
 check_and_install_python_libs
 
-# 检查输入参数
 if [ $# -ne 3 ]; then
     echo "使用方式: $0 <算法名称> <队列策略> <运行次数>"
     echo "示例: $0 cubic RED 5"
     exit 1
 fi
 
-# 从输入参数获取配置（支持的算法：reno/cubic/yeah/vegas；队列策略：DropTail/RED）
 ALGO="$1"
 QUEUE="$2"
 NUM_RUNS="$3"
 
-# 验证输入合法性
 VALID_ALGOS=("reno" "cubic" "yeah" "vegas")
 VALID_QUEUES=("DropTail" "RED")
 if ! [[ " ${VALID_ALGOS[@]} " =~ " ${ALGO} " ]]; then
@@ -52,49 +46,40 @@ if ! [[ "$NUM_RUNS" =~ ^[0-9]+$ ]] || [ "$NUM_RUNS" -lt 1 ]; then
     exit 1
 fi
 
-# 配置参数
 SCENARIO="${ALGO}_${QUEUE}"
-BANDWIDTH="1000Mb"  # 可根据需要修改带宽
+BANDWIDTH="1000Mb"
 OUT_DIR="repeat_runs_${SCENARIO}_${NUM_RUNS}times"
 RUN_LOG="${OUT_DIR}/run_logs"
 RESULTS_CSV="${OUT_DIR}/${SCENARIO}_runs_summary.csv"
 
-# 创建输出目录
 mkdir -p "${OUT_DIR}" "${RUN_LOG}"
 
-# 初始化结果CSV（存储每次运行的关键指标）
 echo "run_id,throughput_Mbps,plr_pct,jain_fairness,cov_stability" > "${RESULTS_CSV}"
 
-# 步骤1：执行N次重复仿真（每次使用不同随机种子和启动抖动）
 echo "=== 开始 ${NUM_RUNS} 次重复实验（场景：${ALGO}+${QUEUE}） ==="
 for ((run=1; run<=NUM_RUNS; run++)); do
     echo -e "\n--- 第 ${run}/${NUM_RUNS} 次运行 ---"
     
-    # 生成唯一随机种子（基于当前时间+运行ID，确保每次不同）
     SEED=$(( $(date +%s) + run ))
     echo "随机种子: ${SEED}"
     
-    # 生成启动时间抖动（0-0.5秒随机值）
     JITTER=$(echo "scale=4; $RANDOM / 65535 * 0.5" | bc)
     echo "启动时间抖动: ${JITTER}秒"
     
-    # 验证TCL脚本是否存在
     TCL_SCRIPT="${ALGO}Code.tcl"
     if [ ! -f "${TCL_SCRIPT}" ]; then
         echo "错误：未找到脚本 ${TCL_SCRIPT}，终止实验"
         exit 1
     fi
     
-    # 修改TCL脚本：设置随机种子、队列策略、启动抖动
-    # 1. 备份原始脚本（仅首次运行时备份）
     if [ ! -f "${TCL_SCRIPT}.bak" ]; then
         cp "${TCL_SCRIPT}" "${TCL_SCRIPT}.bak"
         echo "已备份原始脚本为 ${TCL_SCRIPT}.bak"
     fi
-    # 2. 替换参数
-    sed -i "s/^set seed .*/set seed ${SEED}/" "${TCL_SCRIPT}"  # 设置随机种子
-    sed -i "s/\(\$ns duplex-link \$n3 \$n4 \).* 50ms .*/\1${BANDWIDTH} 50ms ${QUEUE}/" "${TCL_SCRIPT}"  # 设置队列策略
-    sed -i "s/^set start_time .*/set start_time ${JITTER}/" "${TCL_SCRIPT}"  # 设置启动抖动（假设TCL有此变量）
+    
+    # 适配cubicCode.tcl的参数逻辑：通过环境变量传递带宽和队列
+    sed -i "s/^set bw.*/set bw \"${BANDWIDTH}\"/" "${TCL_SCRIPT}"
+    sed -i "s/DropTail/${QUEUE}/g" "${TCL_SCRIPT}"  # 全局替换队列策略
     
     # 运行仿真
     echo "运行仿真：ns ${TCL_SCRIPT}"
@@ -104,7 +89,6 @@ for ((run=1; run<=NUM_RUNS; run++)); do
         continue
     fi
     
-    # 移动生成的trace文件
     TRACE_FILE=$(find . -maxdepth 1 -type f -name "*${ALGO}*.tr" | sort -r | head -n 1)
     if [ -z "${TRACE_FILE}" ]; then
         echo "警告：第 ${run} 次未生成trace文件，跳过分析"
@@ -114,12 +98,10 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     mv "${TRACE_FILE}" "${TRACE_DEST}"
     echo "trace文件已保存至：${TRACE_DEST}"
     
-    # 步骤2：调用analyser3.py分析单次结果
     echo "分析第 ${run} 次结果..."
     ANALYSIS_DIR="${OUT_DIR}/run${run}_analysis"
     python3 analyser3.py "${ANALYSIS_DIR}" > "${RUN_LOG}/run_${run}_analysis.log" 2>&1
     
-    # 提取关键指标（从analyser3.py生成的algo_summary.csv中）
     SUMMARY_CSV="${ANALYSIS_DIR}/algo_summary.csv"
     if [ -f "${SUMMARY_CSV}" ]; then
         THROUGHPUT=$(grep "${ALGO}" "${SUMMARY_CSV}" | cut -d',' -f2)
@@ -133,30 +115,25 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     fi
 done
 
-# 恢复原始TCL脚本（避免影响后续手动运行）
 if [ -f "${TCL_SCRIPT}.bak" ]; then
     mv "${TCL_SCRIPT}.bak" "${TCL_SCRIPT}"
     echo -e "\n已恢复原始TCL脚本"
 fi
 
-# 步骤3：计算均值和95%置信区间
 echo -e "\n=== 计算统计结果 ==="
 python3 - <<END
 import pandas as pd
 import scipy.stats as stats
 import numpy as np
 
-# 读取Shell传递的参数
 NUM_RUNS = int('${NUM_RUNS}')
 RESULTS_CSV = '${RESULTS_CSV}'
 OUT_DIR = '${OUT_DIR}'
 
-# 读取结果CSV
 df = pd.read_csv(RESULTS_CSV)
 valid_runs = len(df.dropna())
 print(f"有效运行次数：{valid_runs}/{NUM_RUNS}")
 
-# 计算均值和95%置信区间
 if valid_runs < 2:
     print("警告：有效运行次数不足，无法计算置信区间")
 else:
@@ -166,14 +143,12 @@ else:
         "jain_fairness": "Jain公平性",
         "cov_stability": "稳定性CoV (越低越好)"
     }
-    # 保存统计结果到CSV
     with open(f"{OUT_DIR}/summary_stats.csv", "w") as f:
         f.write("metric,mean,ci_lower,ci_upper\n")
         print("\n===== 均值与95%置信区间 =====")
         for col, name in metrics.items():
             data = df[col].dropna()
             mean = data.mean().round(4)
-            # 95%置信区间（t分布）
             ci = stats.t.interval(0.95, len(data)-1, loc=mean, scale=stats.sem(data))
             ci_lower = round(ci[0], 4)
             ci_upper = round(ci[1], 4)
