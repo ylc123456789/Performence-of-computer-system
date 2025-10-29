@@ -106,7 +106,7 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     
     SUMMARY_CSV="${ANALYSIS_DIR}/algo_summary.csv"
     if [ -f "${SUMMARY_CSV}" ]; then
-        # 读取CSV中算法对应的行（假设算法名为$ALGO，如cubic）
+        # 读取CSV中算法对应的行（如cubic所在行）
         line=$(grep "${ALGO}" "${SUMMARY_CSV}")
         if [ -n "$line" ]; then
             THROUGHPUT=$(echo "$line" | cut -d',' -f2)
