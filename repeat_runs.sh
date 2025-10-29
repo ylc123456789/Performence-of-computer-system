@@ -50,22 +50,20 @@ SCENARIO="${ALGO}_${QUEUE}"
 BANDWIDTH="1000Mb"
 OUT_DIR="repeat_runs_${SCENARIO}_${NUM_RUNS}times"
 RUN_LOG="${OUT_DIR}/run_logs"
-# 调整CSV列顺序为 run_id,throughput_Mbps,plr_pct,cov_stability,jain_fairness
 RESULTS_CSV="${OUT_DIR}/${SCENARIO}_runs_summary.csv"
 
 mkdir -p "${OUT_DIR}" "${RUN_LOG}"
 
-# 调整列头顺序
 echo "run_id,throughput_Mbps,plr_pct,cov_stability,jain_fairness" > "${RESULTS_CSV}"
 
 echo "=== 开始 ${NUM_RUNS} 次重复实验（场景：${ALGO}+${QUEUE}） ==="
 for ((run=1; run<=NUM_RUNS; run++)); do
     echo -e "\n--- 第 ${run}/${NUM_RUNS} 次运行 ---"
     
-    SEED=$(( $(date +%s) + run ))
+    SEED=$(( $(date +%s) + run * 1000 ))  # 增加种子随机性
     echo "随机种子: ${SEED}"
     
-    JITTER=$(echo "scale=4; $RANDOM / 65535 * 0.5" | bc)
+    JITTER=$(echo "scale=4; $RANDOM / 65535 * 1.0" | bc)  # 扩大抖动范围
     echo "启动时间抖动: ${JITTER}秒"
     
     TCL_SCRIPT="${ALGO}Code.tcl"
@@ -82,6 +80,8 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     # 适配cubicCode.tcl的参数逻辑：通过环境变量传递带宽和队列
     sed -i "s/^set bw.*/set bw \"${BANDWIDTH}\"/" "${TCL_SCRIPT}"
     sed -i "s/DropTail/${QUEUE}/g" "${TCL_SCRIPT}"  # 全局替换队列策略
+    # 增加流量随机化（假设TCL脚本支持seed参数）
+    sed -i "s/^set seed.*/set seed ${SEED}/" "${TCL_SCRIPT}"
     
     # 运行仿真
     echo "运行仿真：ns ${TCL_SCRIPT}"
@@ -108,14 +108,12 @@ for ((run=1; run<=NUM_RUNS; run++)); do
     
     SUMMARY_CSV="${ANALYSIS_DIR}/algo_summary.csv"
     if [ -f "${SUMMARY_CSV}" ]; then
-        # 读取CSV中算法对应的行（如cubic所在行）
         line=$(grep "${ALGO}" "${SUMMARY_CSV}")
         if [ -n "$line" ]; then
             THROUGHPUT=$(echo "$line" | cut -d',' -f2)
             PLR=$(echo "$line" | cut -d',' -f3)
-            COV=$(echo "$line" | cut -d',' -f4)  # cov_stability对应第4列
-            JAIN=$(echo "$line" | cut -d',' -f5) # jain_fairness对应第5列
-            # 按照新列序写入：run_id,throughput_Mbps,plr_pct,cov_stability,jain_fairness
+            COV=$(echo "$line" | cut -d',' -f4)
+            JAIN=$(echo "$line" | cut -d',' -f5)
             echo "${run},${THROUGHPUT},${PLR},${COV},${JAIN}" >> "${RESULTS_CSV}"
             echo "第 ${run} 次指标：吞吐量=${THROUGHPUT} Mb/s，PLR=${PLR}%，CoV=${COV}，Jain=${JAIN}"
         else
@@ -160,9 +158,14 @@ else:
         for col, name in metrics.items():
             data = df[col].dropna()
             mean = data.mean().round(4)
-            ci = stats.t.interval(0.95, len(data)-1, loc=mean, scale=stats.sem(data))
-            ci_lower = round(ci[0], 4)
-            ci_upper = round(ci[1], 4)
+            std = data.std()
+            if std == 0:
+                ci_lower = mean
+                ci_upper = mean
+            else:
+                ci = stats.t.interval(0.95, len(data)-1, loc=mean, scale=stats.sem(data))
+                ci_lower = round(ci[0], 4)
+                ci_upper = round(ci[1], 4)
             f.write(f"{col},{mean},{ci_lower},{ci_upper}\n")
             print(f"{name}:")
             print(f"  均值: {mean}")
