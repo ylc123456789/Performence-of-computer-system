@@ -690,55 +690,76 @@ def write_compare_csv(results_A, results_B, labelA, labelB, out_dir):
     print(f"[ok] wrote {p_algo}")
 
 
-def write_sensitivity_table(dt_500, red_500, dt_2g, red_2g, out_dir):
+def write_sensitivity_table(base_dt, base_red,
+                            dt_500, red_500,
+                            dt_2g,  red_2g,
+                            out_dir):
     """
-    For sensitivity subsection: write 'sensitivity_table.csv' with 4 metrics × 2 bandwidths × 2 schemes.
-    Columns: Metric, DT@500Mb, RED@500Mb, DT@2Gb, RED@2Gb,
-             Flip? (for that metric, whether ranking RED vs DT flips from 500Mb to 2Gb).
+    For sensitivity subsection: write 'sensitivity_table.csv' with 4 metrics
+    across THREE capacities (Default, 500Mb, 2Gb) and two queue schemes (DT, RED).
+
+    Columns:
+      Metric,
+      DT@Default, RED@Default,
+      DT@500Mb,   RED@500Mb,
+      DT@2Gb,     RED@2Gb
     """
     os.makedirs(out_dir, exist_ok=True)
-    A500 = _scheme_level_metrics(dt_500)
-    B500 = _scheme_level_metrics(red_500)
-    A2G  = _scheme_level_metrics(dt_2g)
-    B2G  = _scheme_level_metrics(red_2g)
 
-    def flip(higher_is_better, vA_500, vB_500, vA_2g, vB_2g):
-        if higher_is_better:
-            sign_500 = np.sign(vB_500 - vA_500)
-            sign_2g  = np.sign(vB_2g  - vA_2g)
-        else:
-            # lower is better -> invert sign comparison
-            sign_500 = np.sign(vA_500 - vB_500)
-            sign_2g  = np.sign(vA_2g  - vB_2g)
-        return "Yes" if (sign_500 * sign_2g) < 0 else "No"
+    # scheme-level metrics for three capacities
+    Base_DT = _scheme_level_metrics(base_dt)
+    Base_RD = _scheme_level_metrics(base_red)
+    A500    = _scheme_level_metrics(dt_500)
+    B500    = _scheme_level_metrics(red_500)
+    A2G     = _scheme_level_metrics(dt_2g)
+    B2G     = _scheme_level_metrics(red_2g)
 
     rows = []
-    rows.append(["Average Goodput (Mb/s)",
-                 f"{A500['goodput_sum']:.6f}", f"{B500['goodput_sum']:.6f}",
-                 f"{A2G['goodput_sum']:.6f}",  f"{B2G['goodput_sum']:.6f}",
-                 flip(True, A500['goodput_sum'], B500['goodput_sum'], A2G['goodput_sum'], B2G['goodput_sum'])])
 
-    rows.append(["Average PLR (%)",
-                 f"{A500['plr_avg']:.6f}", f"{B500['plr_avg']:.6f}",
-                 f"{A2G['plr_avg']:.6f}",  f"{B2G['plr_avg']:.6f}",
-                 flip(False, A500['plr_avg'], B500['plr_avg'], A2G['plr_avg'], B2G['plr_avg'])])
+    # ---- Goodput ----
+    rows.append([
+        "Average Goodput (Mb/s)",
+        f"{Base_DT['goodput_sum']:.6f}", f"{Base_RD['goodput_sum']:.6f}",
+        f"{A500['goodput_sum']:.6f}",    f"{B500['goodput_sum']:.6f}",
+        f"{A2G['goodput_sum']:.6f}",     f"{B2G['goodput_sum']:.6f}",
+    ])
 
-    rows.append(["Fairness Index (Jain)",
-                 f"{A500['jain_avg']:.6f}", f"{B500['jain_avg']:.6f}",
-                 f"{A2G['jain_avg']:.6f}",  f"{B2G['jain_avg']:.6f}",
-                 flip(True, A500['jain_avg'], B500['jain_avg'], A2G['jain_avg'], B2G['jain_avg'])])
+    # ---- PLR ----
+    rows.append([
+        "Average PLR (%)",
+        f"{Base_DT['plr_avg']:.6f}", f"{Base_RD['plr_avg']:.6f}",
+        f"{A500['plr_avg']:.6f}",    f"{B500['plr_avg']:.6f}",
+        f"{A2G['plr_avg']:.6f}",     f"{B2G['plr_avg']:.6f}",
+    ])
 
-    rows.append(["Stability (CoV, lower=better)",
-                 f"{A500['cov_avg']:.6f}", f"{B500['cov_avg']:.6f}",
-                 f"{A2G['cov_avg']:.6f}",  f"{B2G['cov_avg']:.6f}",
-                 flip(False, A500['cov_avg'], B500['cov_avg'], A2G['cov_avg'], B2G['cov_avg'])])
+    # ---- Jain ----
+    rows.append([
+        "Fairness Index (Jain)",
+        f"{Base_DT['jain_avg']:.6f}", f"{Base_RD['jain_avg']:.6f}",
+        f"{A500['jain_avg']:.6f}",    f"{B500['jain_avg']:.6f}",
+        f"{A2G['jain_avg']:.6f}",     f"{B2G['jain_avg']:.6f}",
+    ])
+
+    # ---- CoV ----
+    rows.append([
+        "Stability (CoV, lower=better)",
+        f"{Base_DT['cov_avg']:.6f}", f"{Base_RD['cov_avg']:.6f}",
+        f"{A500['cov_avg']:.6f}",    f"{B500['cov_avg']:.6f}",
+        f"{A2G['cov_avg']:.6f}",     f"{B2G['cov_avg']:.6f}",
+    ])
 
     p = os.path.join(out_dir, "sensitivity_table.csv")
     with open(p, "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["Metric", "DT@500Mb", "RED@500Mb", "DT@2Gb", "RED@2Gb", "Flip? (RED vs DT)"])
+        w.writerow([
+            "Metric",
+            "DT@Default", "RED@Default",
+            "DT@500Mb",   "RED@500Mb",
+            "DT@2Gb",     "RED@2Gb",
+        ])
         w.writerows(rows)
     print(f"[ok] wrote {p}")
+
 
 
 # ------------- Part B – Sensitivity (500Mb vs 2Gb) -------------
@@ -956,7 +977,10 @@ def run_sensitivity(dt_500_dir, red_500_dir, dt_2g_dir, red_2g_dir, out_dir):
 
     # 6) Text summary + Table(CSV)
     write_sensitivity_summary(dt_500, red_500, dt_2g, red_2g, out_dir)
-    write_sensitivity_table(dt_500, red_500, dt_2g, red_2g, out_dir)
+    write_sensitivity_table(base_dt, base_red,
+                            dt_500,  red_500,
+                            dt_2g,   red_2g,
+                            out_dir)
 
 # ------------- Entry point -------------
 

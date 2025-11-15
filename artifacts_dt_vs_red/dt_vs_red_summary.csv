@@ -1,5 +1,5 @@
 Metric,DropTail,RED,Improvement (B vs A)
-Average Goodput (Mb/s),0.636160,0.547040,-0.089120
-Average PLR (%),1.047493,0.686444,0.361049
-Fairness Index (Jain),0.673004,0.700085,0.027081
-"Stability (CoV, lower=better)",1.541548,1.525521,0.016027
+Average Goodput (Mb/s),0.575520,0.532080,-0.043440
+Average PLR (%),1.030355,0.795573,0.234782
+Fairness Index (Jain),0.689937,0.703626,0.013689
+"Stability (CoV, lower=better)",1.547519,1.518411,0.029108
