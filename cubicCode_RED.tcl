@@ -14,7 +14,7 @@ set seed [expr {[info exists ::env(SEED)] ? $::env(SEED) : [clock seconds]}]
 puts "Current random seed: $seed"  ;# Print seed to verify effectiveness
 
 # --- 2. read bottleneck bandwidth ---
-set bw [expr {[info exists ::env(BW)] ? $::env(BW) : "500Mb"}]
+set bw [expr {[info exists ::env(BW)] ? $::env(BW) : "1000Mb"}]
 
 $ns color 1 Blue
 $ns color 2 Red

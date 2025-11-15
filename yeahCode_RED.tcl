@@ -8,9 +8,9 @@
 #             n2                   n6 
 
 set ns [new Simulator]
-# --- Read bottleneck bandwidth from environment variable (default 500Mb) ---
+# --- Read bottleneck bandwidth from environment variable (default 1000Mb) ---
 # Use values like 500Mb or 2Gb when running:  BW=2Gb ns ./cubicCode.tcl
-set bw [expr {[info exists ::env(BW)] ? $::env(BW) : "500Mb"}]
+set bw [expr {[info exists ::env(BW)] ? $::env(BW) : "1000Mb"}]
 
 $ns color 1 Blue
 $ns color 2 Red
