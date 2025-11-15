@@ -24,15 +24,37 @@ Part A (TCP flavours under the default topology)
 
 Part B (DropTail vs RED on the same topology)
 - Base comparison (ONE figure, ≤2 subplots + ~8–10 lines interpretation by students):
-  * dt_vs_red_all_metrics.png  (LEFT: total goodput bars + PLR line; RIGHT: Jain bars + CoV line)
-  * (Additionally exported:) dt_vs_red_goodput_plr.png, dt_vs_red_fairness_stability.png
+  * dt_vs_red_all_metrics.png
+      - LEFT : total goodput bars (DropTail vs RED) + PLR line (secondary y-axis)
+      - RIGHT: Jain fairness bars (DropTail vs RED) + CoV line (secondary y-axis)
+  * (Additionally exported helper figures)
+      - dt_vs_red_goodput_plr.png          # goodput + PLR only
+      - dt_vs_red_fairness_stability.png   # Jain + CoV only
+
 - Sensitivity (THIS IS Part B's second subsection, not a Part C):
-  * Students rerun the same topology with a different bottleneck bandwidth ONCE (e.g., 500 Mb or 2 Gb).
+  * Students rerun the same topology with a different bottleneck bandwidth.
+    The spec suggests picking one extra capacity (e.g., 500 Mb/s or 2 Gb/s);
+    this script supports the stronger setting of having TWO extra capacities
+    (500 Mb/s AND 2 Gb/s) so that trends are clearer.
   * Script command:
-      python3 analyser3.py --sensitivity runs_dt_500M runs_red_500M runs_dt_2G runs_red_2G [out_dir]
-    Outputs:
-      - dt_red_sensitivity.png  (ONE figure, TWO subplots covering all 4 metrics across 500Mb vs 2Gb)
-      - sensitivity_summary.txt (150–250 words English summary; reports whether the winner flips)
+      python3 analyser3.py --sensitivity runs_dt_500M runs_red_500M \
+                           runs_dt_2G   runs_red_2G   [out_dir]
+    Outputs in [out_dir]:
+      - dt_red_sensitivity.png
+          ONE figure, TWO subplots covering all 4 metrics across 500Mb vs 2Gb:
+            LEFT : total goodput bars + PLR lines
+            RIGHT: Jain bars + CoV lines
+      - dt_red_default_vs_500Mb.png
+          ONE figure, TWO subplots comparing DEFAULT capacity vs 500Mb
+          (DropTail & RED, same 4 metrics as above).
+      - dt_red_default_vs_2Gb.png
+          ONE figure, TWO subplots comparing DEFAULT capacity vs 2Gb
+          (DropTail & RED, same 4 metrics as above).
+      - sensitivity_table.csv
+          Scheme-level table for DT/RED @ 500Mb and 2Gb, plus flip flags per metric.
+      - sensitivity_summary.txt
+          150–250 words English summary; reports which queue is preferable
+          at each bandwidth and whether the overall winner flips.
 
 Usage:
   Part A (auto-find traces in current folder; will try ns if missing):
@@ -42,7 +64,9 @@ Usage:
       python3 analyser3.py --compare runs_dt runs_red [out_dir]
 
   Part B (sensitivity; four folders: DT/RED under 500Mb and 2Gb):
-      python3 analyser3.py --sensitivity runs_dt_500M runs_red_500M runs_dt_2G runs_red_2G [out_dir]
+      python3 analyser3.py --sensitivity runs_dt_500M runs_red_500M \
+                           runs_dt_2G   runs_red_2G   [out_dir]
+
 """
 
 import os
@@ -753,82 +777,121 @@ def sensitivity_overlay_figure(dt_500, red_500, dt_2g, red_2g, out_dir):
       Left : Goodput (bars) + PLR (lines), showing 500Mb vs 2Gb & DT vs RED
       Right: Jain (bars)    + CoV (lines), showing 500Mb vs 2Gb & DT vs RED
     """
+    capacity_pair_figure(
+        dt_500, red_500, dt_2g, red_2g,
+        labelA="500Mb", labelB="2Gb",
+        title="Sensitivity: Bottleneck 500Mb vs 2Gb (DropTail vs RED)",
+        filename="dt_red_sensitivity.png",
+        out_dir=out_dir,
+    )
+
+def capacity_pair_figure(dt_A, red_A, dt_B, red_B,
+                         labelA: str, labelB: str,
+                         title: str, filename: str, out_dir: str):
+    """
+    Generic figure for comparing two capacities (A vs B) under DropTail & RED.
+
+    Produces ONE figure with TWO subplots:
+      - Left : Goodput (bars) + PLR (lines)
+      - Right: Jain (bars)    + CoV (lines)
+
+    labelA / labelB: strings for capacity labels (e.g. 'Default', '500Mb').
+    filename      : output PNG name (saved into out_dir).
+    """
     os.makedirs(out_dir, exist_ok=True)
-    algos = [a for a in ["reno","cubic","yeah","vegas"] if a in dt_500 and a in red_500 and a in dt_2g and a in red_2g]
+    algos = [a for a in ["reno", "cubic", "yeah", "vegas"]
+             if a in dt_A and a in red_A and a in dt_B and a in red_B]
     if not algos:
-        print("[warn] sensitivity: algorithms not aligned"); return
-    x = np.arange(len(algos)); w=0.28
+        print(f"[warn] capacity_pair_figure: algorithms not aligned for {labelA} vs {labelB}")
+        return
 
-    gp_dt_500 = [sum(dt_500[a]["overall_goodput_Mbps"].values()) for a in algos]
-    gp_red_500= [sum(red_500[a]["overall_goodput_Mbps"].values()) for a in algos]
-    gp_dt_2g  = [sum(dt_2g[a]["overall_goodput_Mbps"].values()) for a in algos]
-    gp_red_2g = [sum(red_2g[a]["overall_goodput_Mbps"].values()) for a in algos]
+    # x positions (per TCP flavour)
+    x = np.arange(len(algos))
 
-    plr_dt_500= [np.mean(list(dt_500[a]["plr_pct"].values())) for a in algos]
-    plr_red_500=[np.mean(list(red_500[a]["plr_pct"].values())) for a in algos]
-    plr_dt_2g  = [np.mean(list(dt_2g[a]["plr_pct"].values())) for a in algos]
-    plr_red_2g = [np.mean(list(red_2g[a]["plr_pct"].values())) for a in algos]
+    # We have 4 bars per group: DT_A, RED_A, DT_B, RED_B.
+    # Keep total group width <= 0.8 to avoid overlapping between neighbouring groups.
+    n_bars_per_group = 4
+    group_width = 0.8
+    w = group_width / n_bars_per_group      # e.g. 0.2
+    offsets = [-1.5 * w, -0.5 * w, 0.5 * w, 1.5 * w]
 
-    jn_dt_500 = [dt_500[a]["fairness_jain_last_third"] for a in algos]
-    jn_red_500= [red_500[a]["fairness_jain_last_third"] for a in algos]
-    jn_dt_2g  = [dt_2g[a]["fairness_jain_last_third"] for a in algos]
-    jn_red_2g = [red_2g[a]["fairness_jain_last_third"] for a in algos]
+    # ---- aggregate metrics for A ----
+    gp_dt_A  = [sum(dt_A[a]["overall_goodput_Mbps"].values()) for a in algos]
+    gp_red_A = [sum(red_A[a]["overall_goodput_Mbps"].values()) for a in algos]
+    plr_dt_A = [np.mean(list(dt_A[a]["plr_pct"].values())) for a in algos]
+    plr_red_A= [np.mean(list(red_A[a]["plr_pct"].values())) for a in algos]
+    jn_dt_A  = [dt_A[a]["fairness_jain_last_third"] for a in algos]
+    jn_red_A = [red_A[a]["fairness_jain_last_third"] for a in algos]
+    cv_dt_A  = [np.mean(list(dt_A[a]["cov"].values())) for a in algos]
+    cv_red_A = [np.mean(list(red_A[a]["cov"].values())) for a in algos]
 
-    cv_dt_500 = [np.mean(list(dt_500[a]["cov"].values())) for a in algos]
-    cv_red_500= [np.mean(list(red_500[a]["cov"].values())) for a in algos]
-    cv_dt_2g  = [np.mean(list(dt_2g[a]["cov"].values())) for a in algos]
-    cv_red_2g = [np.mean(list(red_2g[a]["cov"].values())) for a in algos]
+    # ---- aggregate metrics for B ----
+    gp_dt_B  = [sum(dt_B[a]["overall_goodput_Mbps"].values()) for a in algos]
+    gp_red_B = [sum(red_B[a]["overall_goodput_Mbps"].values()) for a in algos]
+    plr_dt_B = [np.mean(list(dt_B[a]["plr_pct"].values())) for a in algos]
+    plr_red_B= [np.mean(list(red_B[a]["plr_pct"].values())) for a in algos]
+    jn_dt_B  = [dt_B[a]["fairness_jain_last_third"] for a in algos]
+    jn_red_B = [red_B[a]["fairness_jain_last_third"] for a in algos]
+    cv_dt_B  = [np.mean(list(dt_B[a]["cov"].values())) for a in algos]
+    cv_red_B = [np.mean(list(red_B[a]["cov"].values())) for a in algos]
 
-    fig, axs = plt.subplots(1,2, figsize=(12,4))
+    # larger pic
+    fig, axs = plt.subplots(1, 2, figsize=(13, 4.5))
 
-    # Left: goodput + PLR
+    # ----- Left: Goodput + PLR -----
     ax1 = axs[0]
-    ax1.bar(x-1.5*w, gp_dt_500,  width=w, label="DT 500Mb GP")
-    ax1.bar(x-0.5*w, gp_red_500, width=w, label="RED 500Mb GP")
-    ax1.bar(x+0.5*w, gp_dt_2g,   width=w, label="DT 2Gb GP")
-    ax1.bar(x+1.5*w, gp_red_2g,  width=w, label="RED 2Gb GP")
-    ax1.set_xticks(x); ax1.set_xticklabels(algos)
+    ax1.bar(x + offsets[0], gp_dt_A,  width=w, label=f"DT {labelA} GP")
+    ax1.bar(x + offsets[1], gp_red_A, width=w, label=f"RED {labelA} GP")
+    ax1.bar(x + offsets[2], gp_dt_B,  width=w, label=f"DT {labelB} GP")
+    ax1.bar(x + offsets[3], gp_red_B, width=w, label=f"RED {labelB} GP")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels([a.upper() for a in algos])
     ax1.set_ylabel("Goodput (Mb/s)")
-    ax1.set_title("Goodput & PLR (500Mb vs 2Gb)")
+    ax1.set_title(f"Goodput & PLR ({labelA} vs {labelB})")
 
     ax1b = ax1.twinx()
-    ax1b.plot(x, plr_dt_500, marker='o', linestyle='-',  label="DT 500Mb PLR")
-    ax1b.plot(x, plr_red_500,marker='o', linestyle='--', label="RED 500Mb PLR")
-    ax1b.plot(x, plr_dt_2g,  marker='^', linestyle='-',  label="DT 2Gb PLR")
-    ax1b.plot(x, plr_red_2g, marker='^', linestyle='--', label="RED 2Gb PLR")
+    ax1b.plot(x, plr_dt_A,  marker='o', linestyle='-',  label=f"DT {labelA} PLR")
+    ax1b.plot(x, plr_red_A, marker='o', linestyle='--', label=f"RED {labelA} PLR")
+    ax1b.plot(x, plr_dt_B,  marker='^', linestyle='-',  label=f"DT {labelB} PLR")
+    ax1b.plot(x, plr_red_B, marker='^', linestyle='--', label=f"RED {labelB} PLR")
     ax1b.set_ylabel("PLR (%)")
 
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax1b.get_legend_handles_labels()
-    ax1.legend(lines+lines2, labels+labels2, loc="upper left", fontsize=8)
+    ax1.legend(lines + lines2, labels + labels2,
+               loc="upper left", fontsize=8, framealpha=0.9)
 
-    # Right: Jain + CoV
+    # ----- Right: Jain + CoV -----
     ax2 = axs[1]
-    ax2.bar(x-1.5*w, jn_dt_500,  width=w, label="DT 500Mb Jain")
-    ax2.bar(x-0.5*w, jn_red_500, width=w, label="RED 500Mb Jain")
-    ax2.bar(x+0.5*w, jn_dt_2g,   width=w, label="DT 2Gb Jain")
-    ax2.bar(x+1.5*w, jn_red_2g,  width=w, label="RED 2Gb Jain")
-    ax2.set_xticks(x); ax2.set_xticklabels(algos)
-    ax2.set_ylim(0,1.05)
+    ax2.bar(x + offsets[0], jn_dt_A,  width=w, label=f"DT {labelA} Jain")
+    ax2.bar(x + offsets[1], jn_red_A, width=w, label=f"RED {labelA} Jain")
+    ax2.bar(x + offsets[2], jn_dt_B,  width=w, label=f"DT {labelB} Jain")
+    ax2.bar(x + offsets[3], jn_red_B, width=w, label=f"RED {labelB} Jain")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([a.upper() for a in algos])
+    ax2.set_ylim(0, 1.05)
     ax2.set_ylabel("Jain's Fairness")
     ax2.set_title("Fairness & Stability")
 
     ax2b = ax2.twinx()
-    ax2b.plot(x, cv_dt_500,  marker='o', linestyle='-',  label="DT 500Mb CoV")
-    ax2b.plot(x, cv_red_500, marker='o', linestyle='--', label="RED 500Mb CoV")
-    ax2b.plot(x, cv_dt_2g,   marker='^', linestyle='-',  label="DT 2Gb CoV")
-    ax2b.plot(x, cv_red_2g,  marker='^', linestyle='--', label="RED 2Gb CoV")
+    ax2b.plot(x, cv_dt_A,  marker='o', linestyle='-',  label=f"DT {labelA} CoV")
+    ax2b.plot(x, cv_red_A, marker='o', linestyle='--', label=f"RED {labelA} CoV")
+    ax2b.plot(x, cv_dt_B,  marker='^', linestyle='-',  label=f"DT {labelB} CoV")
+    ax2b.plot(x, cv_red_B, marker='^', linestyle='--', label=f"RED {labelB} CoV")
     ax2b.set_ylabel("CoV (lower=better)")
 
     lines, labels = ax2.get_legend_handles_labels()
     lines2, labels2 = ax2b.get_legend_handles_labels()
-    ax2.legend(lines+lines2, labels+labels2, loc="upper left", fontsize=8)
+    ax2.legend(lines + lines2, labels + labels2,
+               loc="upper left", fontsize=8, framealpha=0.9)
 
-    fig.suptitle("Sensitivity: Bottleneck 500Mb vs 2Gb (DropTail vs RED)")
+    fig.suptitle(title)
     fig.tight_layout()
-    outp = os.path.join(out_dir, "dt_red_sensitivity.png")
-    fig.savefig(outp, dpi=160); plt.close()
+    outp = os.path.join(out_dir, filename)
+    fig.savefig(outp, dpi=160)
+    plt.close()
     print(f"[ok] wrote {outp}")
+
 
 def write_sensitivity_summary(dt_500, red_500, dt_2g, red_2g, out_dir):
     """
@@ -859,15 +922,41 @@ def write_sensitivity_summary(dt_500, red_500, dt_2g, red_2g, out_dir):
 def run_sensitivity(dt_500_dir, red_500_dir, dt_2g_dir, red_2g_dir, out_dir):
     """Load four folders, create the overlay figure, and write the 150–250-word summary."""
     os.makedirs(out_dir, exist_ok=True)
+
+    # 1) Load 500Mb & 2Gb results (already used)
     dt_500 = load_results_from_dir(dt_500_dir)
     red_500= load_results_from_dir(red_500_dir)
     dt_2g  = load_results_from_dir(dt_2g_dir)
     red_2g = load_results_from_dir(red_2g_dir)
-    sensitivity_overlay_figure(dt_500, red_500, dt_2g, red_2g, out_dir)
-    write_sensitivity_summary(dt_500, red_500, dt_2g, red_2g, out_dir)
-    # And export a single wide CSV covering both bandwidths + flip flags
-    write_sensitivity_table(dt_500, red_500, dt_2g, red_2g, out_dir)
 
+    # 2) ALSO load default-capacity results (assumed in runs_dt / runs_red)
+    base_dt  = load_results_from_dir("runs_dt")
+    base_red = load_results_from_dir("runs_red")
+
+    # 3) Original 500Mb vs 2Gb figure
+    sensitivity_overlay_figure(dt_500, red_500, dt_2g, red_2g, out_dir)
+
+    # 4) NEW: Default vs 500Mb
+    capacity_pair_figure(
+        base_dt, base_red, dt_500, red_500,
+        labelA="Default", labelB="500Mb",
+        title="Sensitivity: Default vs 500Mb (DropTail vs RED)",
+        filename="dt_red_default_vs_500Mb.png",
+        out_dir=out_dir,
+    )
+
+    # 5) NEW: Default vs 2Gb
+    capacity_pair_figure(
+        base_dt, base_red, dt_2g, red_2g,
+        labelA="Default", labelB="2Gb",
+        title="Sensitivity: Default vs 2Gb (DropTail vs RED)",
+        filename="dt_red_default_vs_2Gb.png",
+        out_dir=out_dir,
+    )
+
+    # 6) Text summary + Table(CSV)
+    write_sensitivity_summary(dt_500, red_500, dt_2g, red_2g, out_dir)
+    write_sensitivity_table(dt_500, red_500, dt_2g, red_2g, out_dir)
 
 # ------------- Entry point -------------
 

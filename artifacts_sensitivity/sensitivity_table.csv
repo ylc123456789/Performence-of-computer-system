@@ -1,0 +1,5 @@
+Metric,DT@500Mb,RED@500Mb,DT@2Gb,RED@2Gb,Flip? (RED vs DT)
+Average Goodput (Mb/s),0.566400,0.491760,0.628960,0.491760,No
+Average PLR (%),1.123011,0.551803,0.926249,0.551803,No
+Fairness Index (Jain),0.695974,0.714211,0.682029,0.714211,No
+"Stability (CoV, lower=better)",1.559746,1.509545,1.503703,1.509228,Yes
