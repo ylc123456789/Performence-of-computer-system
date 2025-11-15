@@ -1,0 +1,5 @@
+algo,overall_goodput_Mbps(sum_flows),plr_pct(avg_flows),stability_CoV(avg_flows),Jain_last_third
+reno,0.112,0.823,1.531,0.8438
+cubic,0.259,2.283,1.586,0.5780
+yeah,0.158,0.320,1.551,0.7775
+vegas,0.038,1.066,1.571,0.5847

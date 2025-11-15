@@ -6,14 +6,18 @@ analyser3.py (English-commented, final)
 Project deliverables mapped to the marking scheme:
 
 Part A (TCP flavours under the default topology)
-- Tables & comparison figure:
-  * flows_summary.csv (per-flow total goodput [Mb/s] and PLR [%], plus CoV)
-  * algo_summary.csv  (per-flavour aggregated: sum goodput, avg PLR, avg CoV, Jain)
-  * algo_compare.png  (ONE figure with TWO subplots: total goodput bars + avg PLR bars)
+- Tables & comparison figures:
+  * flows_summary.csv  (per-flow total goodput [Mb/s] and PLR [%], plus CoV)
+  * algo_summary.csv   (per-flavour aggregated: sum goodput, avg PLR, avg CoV, Jain)
+  * algo_compare.png   (ONE figure with TWO subplots:
+                        total goodput bars + avg PLR bars, aggregated over flows)
+  * flows_compare.png  (NEW: ONE figure with TWO subplots:
+                        per-flow goodput bars + per-flow PLR bars, as required by
+                        “per-flow total_goodput_Mbps and plr_pct” in Part A spec)
 - Fairness:
-  * fairness.png      (Jain fairness using only the LAST 1/3 of time, per spec)
+  * fairness.png       (Jain fairness using only the LAST 1/3 of time, per spec)
 - Stability:
-  * stability_cov.png (avg CoV per flavour; lower = more stable)
+  * stability_cov.png  (avg CoV per flavour; lower = more stable)
 - Students write:
   * 3 short paragraphs: most fair flavour (≈5 lines), most stable flavour (≈5 lines),
     and a 3–5 sentence overall conclusion referencing the data/plots.
@@ -290,6 +294,76 @@ def plot_algo_compare(results, out_dir):
     fig.savefig(p, dpi=160); plt.close()
     print(f"[ok] wrote {p}")
 
+def plot_flows_compare(parsed_by_algo, results, out_dir):
+    """
+    Part A: per-flow comparison figure.
+
+    One figure, two subplots:
+      - LEFT  subplot: per-flow goodput (Mb/s)
+      - RIGHT subplot: per-flow PLR (%)
+
+    X-axis: TCP variant (reno / cubic / yeah / vegas)
+    For each variant, multiple bars (one per flow: Flow 0, Flow 1, ...).
+    """
+    algos = [a for a in ["reno", "cubic", "yeah", "vegas"] if a in results]
+    if not algos:
+        return
+
+    # Union of all flow IDs across algorithms (e.g., "0", "1").
+    all_flows = sorted({
+        fid
+        for algo in algos
+        for fid in parsed_by_algo[algo]["flows"]
+    })
+
+    n_algos = len(algos)
+    n_flows = max(1, len(all_flows))
+
+    x_base = np.arange(n_algos)
+    total_width = 0.8                       # total width per algo group
+    bar_width = total_width / n_flows       # width of each flow's bar
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    ax_gp, ax_plr = axes
+
+    for j, flow_id in enumerate(all_flows):
+        # Offsets for this flow around each algorithm position
+        offsets = x_base - total_width / 2.0 + bar_width * (j + 0.5)
+
+        gp_vals = []
+        plr_vals = []
+        for algo in algos:
+            met = results[algo]
+            gp_vals.append(met["overall_goodput_Mbps"].get(flow_id, 0.0))
+            plr_vals.append(met["plr_pct"].get(flow_id, 0.0))
+
+        ax_gp.bar(offsets, gp_vals, width=bar_width, label=f"Flow {flow_id}")
+        ax_plr.bar(offsets, plr_vals, width=bar_width, label=f"Flow {flow_id}")
+
+    # X ticks & labels
+    ax_gp.set_xticks(x_base)
+    ax_gp.set_xticklabels([a.upper() for a in algos])
+    ax_plr.set_xticks(x_base)
+    ax_plr.set_xticklabels([a.upper() for a in algos])
+
+    # Axis labels & titles
+    ax_gp.set_ylabel("Goodput (Mb/s)")
+    ax_gp.set_title("Per-flow Goodput Comparison")
+
+    ax_plr.set_ylabel("Packet Loss Rate (%)")
+    ax_plr.set_title("Per-flow PLR Comparison")
+
+    # Legend
+    ax_gp.legend(title="Flows", loc="best")
+    ax_plr.legend(title="Flows", loc="best")
+
+    fig.suptitle("TCP Flavours — Per-flow Performance")
+    fig.tight_layout()
+    p = os.path.join(out_dir, "flows_compare.png")
+    fig.savefig(p, dpi=160)
+    plt.close()
+    print(f"[ok] wrote {p}")
+
 def plot_fairness(results, out_dir):
     """Part A: bar chart of Jain's fairness index (last third)."""
     algos = [a for a in ["reno","cubic","yeah","vegas"] if a in results]
@@ -366,7 +440,8 @@ def main(out_dir="artifacts"):
     # Export
     write_summary_csv(results, out_dir)
     write_per_flow_csv(parsed_by_algo, results, out_dir)  # per-flow table for Part A
-    plot_algo_compare(results, out_dir)
+    plot_algo_compare(results, out_dir)                   # overall per-algo
+    plot_flows_compare(parsed_by_algo, results, out_dir)  # NEW per-flow figure
     plot_fairness(results, out_dir)
     plot_stability(results, out_dir)
 
